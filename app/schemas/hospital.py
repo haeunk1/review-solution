@@ -1,18 +1,30 @@
 from pydantic import BaseModel
 from datetime import datetime
+from typing import Optional
 
-# 생성할 때 받는 데이터 (Request Body)
+
 class HospitalCreate(BaseModel):
     hospital_id: str
     name: str
-    category: str | None = None
+    category: Optional[str] = None
+    tenant_id: Optional[str] = None
+    naver_place_id: Optional[str] = None
+    google_place_id: Optional[str] = None
+    gangnamunni_id: Optional[str] = None
+    crawl_interval_hours: Optional[int] = 6
 
-# 결과로 돌려줄 때 데이터 (Response Body)
+
 class HospitalResponse(BaseModel):
     hospital_id: str
     name: str
+    category: Optional[str]
+    tenant_id: Optional[str]
+    naver_place_id: Optional[str]
+    google_place_id: Optional[str]
+    gangnamunni_id: Optional[str]
+    crawl_interval_hours: int
     is_active: bool
     created_at: datetime
 
     class Config:
-        from_attributes = True # SQLAlchemy 객체를 자동으로 DTO로 변환
+        from_attributes = True

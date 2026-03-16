@@ -5,3 +5,7 @@ psycopg2-binary
 playwright
 openai
 python-dotenv
+alembic
+apscheduler
+python-jose[cryptography]
+passlib[bcrypt]

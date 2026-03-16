@@ -1,65 +1,267 @@
-import asyncio
+from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
+from typing import List, Optional
 from playwright.async_api import async_playwright
-from datetime import datetime
 
-class ScraperService:
-    async def get_naver_reviews(self, hospital_id: str, max_pages: int = 3):
-        results = []
-        
-        async with async_playwright() as p:
-            # 1. 브라우저 실행 (headless=True면 창이 안 뜸, 테스트 시 False 권장)
-            browser = await p.chromium.launch(headless=True)
-            context = await browser.new_context(
-                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+
+@dataclass
+class ReviewData:
+    hospital_id: str
+    platform: str  # "naver" | "google" | "gangnamunni"
+    platform_review_id: Optional[str]
+    review_text: str
+    rating: Optional[str] = None
+    visitor_name: Optional[str] = "익명"
+    visited_date: Optional[str] = None
+
+
+class BaseScraper(ABC):
+    """모든 플랫폼 스크래퍼의 공통 인터페이스"""
+
+    @abstractmethod
+    async def scrape(self, place_id: str, hospital_id: str, max_pages: int = 3) -> List[ReviewData]:
+        pass
+
+    async def _launch_browser(self, playwright):
+        return await playwright.chromium.launch(
+            headless=True,
+            args=["--no-sandbox", "--disable-setuid-sandbox"]
+        )
+
+    async def _new_context(self, browser):
+        return await browser.new_context(
+            user_agent=(
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/120.0.0.0 Safari/537.36"
             )
+        )
+
+
+class NaverScraper(BaseScraper):
+    """네이버 플레이스 리뷰 스크래퍼"""
+
+    PLATFORM = "naver"
+    BASE_URL = "https://pcmap.place.naver.com/hospital/{place_id}/review/visitor"
+
+    async def scrape(self, place_id: str, hospital_id: str, max_pages: int = 3) -> List[ReviewData]:
+        results: List[ReviewData] = []
+
+        async with async_playwright() as p:
+            browser = await self._launch_browser(p)
+            context = await self._new_context(browser)
             page = await context.new_page()
 
-            # 2. 네이버 플레이스 리뷰 탭 직행 URL
-            url = f"https://pcmap.place.naver.com/hospital/{hospital_id}/review/visitor"
-            await page.goto(url, wait_until="networkidle")
-
+            url = self.BASE_URL.format(place_id=place_id)
             try:
-                # 3. '더보기' 버튼 클릭 (원하는 페이지만큼)
+                await page.goto(url, wait_until="networkidle", timeout=30000)
+
+                # '더보기' 버튼 클릭 반복
                 for _ in range(max_pages):
-                    more_button = page.locator('a.f_S_P') # 네이버 더보기 버튼 클래스 (변경될 수 있음)
-                    if await more_button.is_visible():
-                        await more_button.click()
-                        await page.wait_for_timeout(1000) # 로딩 대기
+                    more_btn = page.locator('a.f_S_P')
+                    if await more_btn.is_visible():
+                        await more_btn.click()
+                        await page.wait_for_timeout(1500)
                     else:
                         break
 
-                # 4. 리뷰 리스트 아이템 추출
-                # 네이버 리뷰 아이템의 공통 클래스 셀렉터
-                review_elements = await page.query_selector_all('li.p_S_f') 
+                review_elements = await page.query_selector_all('li.p_S_f')
 
-                for element in review_elements:
-                    # 리뷰 텍스트 (내용이 길면 '더보기'가 또 있을 수 있음)
-                    text_element = await element.query_selector('.z_p_x')
-                    review_text = await text_element.inner_text() if text_element else ""
+                for idx, element in enumerate(review_elements):
+                    text_el = await element.query_selector('.z_p_x')
+                    review_text = await text_el.inner_text() if text_el else ""
 
-                    # 방문자명
-                    name_element = await element.query_selector('.P_Y_u')
-                    visitor_name = await name_element.inner_text() if name_element else "익명"
+                    name_el = await element.query_selector('.P_Y_u')
+                    visitor_name = await name_el.inner_text() if name_el else "익명"
 
-                    # 방문 날짜 및 별점 등 (네이버 구조에 따라 상세 선택 필요)
-                    # 보통 '...번째 방문' 같은 텍스트 포함
-                    date_element = await element.query_selector('.X_x_x') # 예시 클래스
-                    visited_date = await date_element.inner_text() if date_element else ""
+                    date_el = await element.query_selector('.X_x_x')
+                    visited_date = await date_el.inner_text() if date_el else ""
 
-                    if review_text: # 내용이 있는 경우만 수집
-                        results.append({
-                            "hospital_id": hospital_id,
-                            "review_text": review_text.replace("\n", " "),
-                            "visitor_name": visitor_name,
-                            "visited_date": visited_date,
-                            "rating": "5" # 네이버는 현재 별점 대신 키워드 리뷰 위주
-                        })
+                    if review_text.strip():
+                        results.append(ReviewData(
+                            hospital_id=hospital_id,
+                            platform=self.PLATFORM,
+                            platform_review_id=f"naver_{place_id}_{idx}",
+                            review_text=review_text.replace("\n", " ").strip(),
+                            rating=None,  # 네이버는 키워드 리뷰 위주
+                            visitor_name=visitor_name.strip(),
+                            visited_date=visited_date.strip(),
+                        ))
 
             except Exception as e:
-                print(f"⚠️ 크롤링 중 에러 발생: {e}")
+                print(f"[NaverScraper] 크롤링 에러: {e}")
             finally:
                 await browser.close()
-                
+
         return results
+
+
+class GoogleScraper(BaseScraper):
+    """구글 맵 리뷰 스크래퍼"""
+
+    PLATFORM = "google"
+    BASE_URL = "https://www.google.com/maps/place/?q=place_id:{place_id}"
+
+    async def scrape(self, place_id: str, hospital_id: str, max_pages: int = 3) -> List[ReviewData]:
+        results: List[ReviewData] = []
+
+        async with async_playwright() as p:
+            browser = await self._launch_browser(p)
+            context = await self._new_context(browser)
+            page = await context.new_page()
+
+            url = self.BASE_URL.format(place_id=place_id)
+            try:
+                await page.goto(url, wait_until="networkidle", timeout=30000)
+
+                # 리뷰 탭 클릭
+                review_tab = page.locator('button[aria-label*="리뷰"], button[aria-label*="Reviews"]')
+                if await review_tab.count() > 0:
+                    await review_tab.first.click()
+                    await page.wait_for_timeout(2000)
+
+                # 스크롤로 리뷰 더 로드
+                review_panel = page.locator('div[role="feed"]')
+                for _ in range(max_pages):
+                    if await review_panel.count() > 0:
+                        await review_panel.evaluate("el => el.scrollTop = el.scrollHeight")
+                        await page.wait_for_timeout(1500)
+
+                review_elements = await page.query_selector_all('div[data-review-id]')
+
+                for element in review_elements:
+                    review_id = await element.get_attribute('data-review-id')
+
+                    text_el = await element.query_selector('span[data-expandable-section]')
+                    if not text_el:
+                        text_el = await element.query_selector('.MyEned')
+                    review_text = await text_el.inner_text() if text_el else ""
+
+                    name_el = await element.query_selector('.d4r55')
+                    visitor_name = await name_el.inner_text() if name_el else "익명"
+
+                    rating_el = await element.query_selector('span[role="img"][aria-label]')
+                    rating_text = await rating_el.get_attribute('aria-label') if rating_el else ""
+                    rating = rating_text.split("점")[0].replace("별표", "").strip() if rating_text else None
+
+                    date_el = await element.query_selector('.rsqaWe')
+                    visited_date = await date_el.inner_text() if date_el else ""
+
+                    if review_text.strip():
+                        results.append(ReviewData(
+                            hospital_id=hospital_id,
+                            platform=self.PLATFORM,
+                            platform_review_id=f"google_{review_id}" if review_id else None,
+                            review_text=review_text.replace("\n", " ").strip(),
+                            rating=rating,
+                            visitor_name=visitor_name.strip(),
+                            visited_date=visited_date.strip(),
+                        ))
+
+            except Exception as e:
+                print(f"[GoogleScraper] 크롤링 에러: {e}")
+            finally:
+                await browser.close()
+
+        return results
+
+
+class GangnamUnniScraper(BaseScraper):
+    """강남언니 리뷰 스크래퍼"""
+
+    PLATFORM = "gangnamunni"
+    BASE_URL = "https://gangnamunni.com/hospitals/{place_id}/reviews"
+
+    async def scrape(self, place_id: str, hospital_id: str, max_pages: int = 3) -> List[ReviewData]:
+        results: List[ReviewData] = []
+
+        async with async_playwright() as p:
+            browser = await self._launch_browser(p)
+            context = await self._new_context(browser)
+            page = await context.new_page()
+
+            url = self.BASE_URL.format(place_id=place_id)
+            try:
+                await page.goto(url, wait_until="networkidle", timeout=30000)
+                await page.wait_for_timeout(2000)
+
+                # 더보기 버튼 반복 클릭
+                for _ in range(max_pages):
+                    more_btn = page.locator('button:has-text("더보기")')
+                    if await more_btn.count() > 0 and await more_btn.first.is_visible():
+                        await more_btn.first.click()
+                        await page.wait_for_timeout(1500)
+                    else:
+                        break
+
+                review_elements = await page.query_selector_all('li[class*="review"]')
+
+                for idx, element in enumerate(review_elements):
+                    text_el = await element.query_selector('p[class*="content"], div[class*="content"]')
+                    review_text = await text_el.inner_text() if text_el else ""
+
+                    name_el = await element.query_selector('span[class*="nickname"], span[class*="name"]')
+                    visitor_name = await name_el.inner_text() if name_el else "익명"
+
+                    rating_el = await element.query_selector('span[class*="rating"], div[class*="star"]')
+                    rating = await rating_el.inner_text() if rating_el else None
+
+                    date_el = await element.query_selector('span[class*="date"], time')
+                    visited_date = await date_el.inner_text() if date_el else ""
+
+                    if review_text.strip():
+                        results.append(ReviewData(
+                            hospital_id=hospital_id,
+                            platform=self.PLATFORM,
+                            platform_review_id=f"gangnamunni_{place_id}_{idx}",
+                            review_text=review_text.replace("\n", " ").strip(),
+                            rating=rating,
+                            visitor_name=visitor_name.strip(),
+                            visited_date=visited_date.strip(),
+                        ))
+
+            except Exception as e:
+                print(f"[GangnamUnniScraper] 크롤링 에러: {e}")
+            finally:
+                await browser.close()
+
+        return results
+
+
+class ScraperService:
+    """플랫폼별 스크래퍼를 통합 관리하는 서비스"""
+
+    _scrapers = {
+        "naver": NaverScraper(),
+        "google": GoogleScraper(),
+        "gangnamunni": GangnamUnniScraper(),
+    }
+
+    async def scrape_platform(
+        self,
+        platform: str,
+        place_id: str,
+        hospital_id: str,
+        max_pages: int = 3,
+    ) -> List[ReviewData]:
+        scraper = self._scrapers.get(platform)
+        if not scraper:
+            raise ValueError(f"지원하지 않는 플랫폼: {platform}")
+        return await scraper.scrape(place_id, hospital_id, max_pages)
+
+    async def scrape_all(self, hospital) -> List[ReviewData]:
+        """병원의 모든 플랫폼 리뷰를 수집"""
+        results: List[ReviewData] = []
+        platform_map = {
+            "naver": hospital.naver_place_id,
+            "google": hospital.google_place_id,
+            "gangnamunni": hospital.gangnamunni_id,
+        }
+        for platform, place_id in platform_map.items():
+            if place_id:
+                reviews = await self.scrape_platform(platform, place_id, hospital.hospital_id)
+                results.extend(reviews)
+        return results
+
 
 scraper_service = ScraperService()

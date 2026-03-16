@@ -1,18 +1,24 @@
 from pydantic import BaseModel
 from datetime import datetime
+from typing import Optional
+from app.models.review import Platform, Sentiment, ReplyStatus, ReplyStyle
 
-# 생성할 때 받는 데이터 (Request Body)
-class ReviewCreate(BaseModel):
-    review_id: str
-    hospital_id: str
-    body: str
 
-# 결과로 돌려줄 때 데이터 (Response Body)
 class ReviewResponse(BaseModel):
-    review_id: str
+    id: int
     hospital_id: str
-    body: str
+    platform: Platform
+    platform_review_id: Optional[str]
+    review_text: str
+    rating: Optional[str]
+    visitor_name: Optional[str]
+    visited_date: Optional[str]
+    sentiment: Optional[Sentiment]
+    keywords: Optional[str]
+    reply_text: Optional[str]
+    reply_status: Optional[ReplyStatus]
+    reply_style: Optional[ReplyStyle]
     created_at: datetime
 
     class Config:
-        from_attributes = True # SQLAlchemy 객체를 자동으로 DTO로 변환
+        from_attributes = True
