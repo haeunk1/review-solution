@@ -364,3 +364,6 @@ FodyWeavers.xsd
 
 .env
 venv
+
+# Debug scripts
+debug_*.py
