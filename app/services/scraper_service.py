@@ -1,7 +1,14 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import List, Optional
+import hashlib
 from playwright.async_api import async_playwright
+
+
+def _stable_id(platform: str, *parts: str) -> str:
+    """리뷰 내용 기반 안정적 ID 생성 (인덱스 변동 무관)"""
+    key = "|".join(parts)
+    return f"{platform}_{hashlib.md5(key.encode()).hexdigest()[:16]}"
 
 
 @dataclass
@@ -44,7 +51,7 @@ class NaverScraper(BaseScraper):
     PLATFORM = "naver"
     BASE_URL = "https://pcmap.place.naver.com/hospital/{place_id}/review/visitor"
 
-    async def scrape(self, place_id: str, hospital_id: str, max_reviews: int = 100) -> List[ReviewData]:
+    async def scrape(self, place_id: str, hospital_id: str, max_reviews: int = 30) -> List[ReviewData]:
         results: List[ReviewData] = []
 
         async with async_playwright() as p:
@@ -74,7 +81,7 @@ class NaverScraper(BaseScraper):
 
                 review_elements = await page.query_selector_all('li.place_apply_pui')
 
-                for idx, element in enumerate(review_elements):
+                for element in review_elements:
                     text_el = await element.query_selector('div.pui__vn15t2')
                     review_text = await text_el.inner_text() if text_el else ""
 
@@ -84,12 +91,15 @@ class NaverScraper(BaseScraper):
                     date_el = await element.query_selector('span.pui__gfuUIT span.pui__blind:last-child')
                     visited_date = await date_el.inner_text() if date_el else ""
 
-                    if review_text.strip():
+                    text = review_text.replace("\n", " ").strip()
+                    if text:
                         results.append(ReviewData(
                             hospital_id=hospital_id,
                             platform=self.PLATFORM,
-                            platform_review_id=f"naver_{place_id}_{idx}",
-                            review_text=review_text.replace("\n", " ").strip(),
+                            platform_review_id=_stable_id(
+                                self.PLATFORM, visitor_name.strip(), visited_date.strip(), text[:40]
+                            ),
+                            review_text=text,
                             rating=None,  # 네이버는 키워드 리뷰 위주
                             visitor_name=visitor_name.strip(),
                             visited_date=visited_date.strip(),
@@ -216,15 +226,18 @@ class GangnamUnniScraper(BaseScraper):
                     date_el = await element.query_selector('span[class*="date"], time')
                     visited_date = await date_el.inner_text() if date_el else ""
 
-                    if review_text.strip():
+                    text = review_text.replace("\n", " ").strip()
+                    name = visitor_name.strip()
+                    date = visited_date.strip()
+                    if text:
                         results.append(ReviewData(
                             hospital_id=hospital_id,
                             platform=self.PLATFORM,
-                            platform_review_id=f"gangnamunni_{place_id}_{idx}",
-                            review_text=review_text.replace("\n", " ").strip(),
+                            platform_review_id=_stable_id(self.PLATFORM, name, date, text[:40]),
+                            review_text=text,
                             rating=rating,
-                            visitor_name=visitor_name.strip(),
-                            visited_date=visited_date.strip(),
+                            visitor_name=name,
+                            visited_date=date,
                         ))
 
             except Exception as e:

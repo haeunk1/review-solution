@@ -36,6 +36,14 @@ def get_hospitals(db: Session = Depends(deps.get_db)):
     return db.query(Hospital).all()
 
 
+@router.get("/info/{hospital_id}", response_model=HospitalResponse)
+def get_hospital(hospital_id: str, db: Session = Depends(deps.get_db)):
+    hospital = db.query(Hospital).filter(Hospital.hospital_id == hospital_id).first()
+    if not hospital:
+        raise HTTPException(status_code=404, detail="등록되지 않은 병원입니다.")
+    return hospital
+
+
 @router.patch("/{hospital_id}", response_model=HospitalResponse)
 def update_hospital(hospital_id: str, hospital_in: HospitalUpdate, db: Session = Depends(deps.get_db)):
     hospital = db.query(Hospital).filter(Hospital.hospital_id == hospital_id).first()

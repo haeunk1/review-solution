@@ -27,15 +27,25 @@ async def collect_reviews_for_hospital(hospital_id: str):
         reviews = await scraper_service.scrape_all(hospital)
         print(f"[Scheduler] 스크래퍼 수집 결과: {len(reviews)}건")
 
+        # 리뷰는 최신순 정렬 → N개 연속 중복이면 이후는 모두 기존 데이터
+        STOP_AFTER = 5
         new_count = 0
-        for i, r in enumerate(reviews):
+        consecutive_exists = 0
+
+        for r in reviews:
             if r.platform_review_id:
                 exists = db.query(Review).filter(
                     Review.platform == r.platform,
                     Review.platform_review_id == r.platform_review_id,
                 ).first()
                 if exists:
+                    consecutive_exists += 1
+                    if consecutive_exists >= STOP_AFTER:
+                        print(f"[Scheduler] {hospital.name}: 기존 리뷰 {STOP_AFTER}개 연속 감지, 수집 중단")
+                        break
                     continue
+                else:
+                    consecutive_exists = 0
 
             db_review = Review(
                 hospital_id=r.hospital_id,
@@ -49,10 +59,8 @@ async def collect_reviews_for_hospital(hospital_id: str):
             db.add(db_review)
             new_count += 1
 
-            # 50건마다 중간 커밋 (중단 시 손실 최소화)
             if new_count % 50 == 0:
                 db.commit()
-                print(f"[Scheduler] 중간 저장: {new_count}건")
 
         db.commit()
         print(f"[Scheduler] {hospital.name}: 신규 리뷰 {new_count}건 저장 완료")
@@ -81,7 +89,6 @@ def schedule_hospital(hospital: Hospital):
         replace_existing=True,
         max_instances=1,
     )
-    print(f"[Scheduler] 등록: {hospital.name} (매 {hospital.crawl_interval_hours}시간)")
 
 
 def init_scheduler():
@@ -91,12 +98,10 @@ def init_scheduler():
         hospitals = db.query(Hospital).filter(Hospital.is_active == True).all()
         for hospital in hospitals:
             schedule_hospital(hospital)
-        print(f"[Scheduler] 초기화 완료: {len(hospitals)}개 병원 등록")
     finally:
         db.close()
 
     scheduler.start()
-    print("[Scheduler] APScheduler 시작")
 
 
 def stop_scheduler():
