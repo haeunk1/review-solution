@@ -368,6 +368,9 @@ venv
 # Debug scripts
 debug_*.py
 
+# Claude Code local settings
+.claude/
+
 # Frontend
 frontend/node_modules/
 frontend/dist/
