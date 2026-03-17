@@ -374,5 +374,6 @@ debug_*.py
 # Frontend
 frontend/node_modules/
 frontend/dist/
+frontend/.vite/
 frontend/.env*.local
 frontend/.env
