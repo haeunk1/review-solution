@@ -24,7 +24,7 @@ class BaseScraper(ABC):
 
     async def _launch_browser(self, playwright):
         return await playwright.chromium.launch(
-            headless=True,
+            headless=False,
             args=["--no-sandbox", "--disable-setuid-sandbox"]
         )
 
@@ -44,7 +44,7 @@ class NaverScraper(BaseScraper):
     PLATFORM = "naver"
     BASE_URL = "https://pcmap.place.naver.com/hospital/{place_id}/review/visitor"
 
-    async def scrape(self, place_id: str, hospital_id: str, max_pages: int = 3) -> List[ReviewData]:
+    async def scrape(self, place_id: str, hospital_id: str, max_reviews: int = 100) -> List[ReviewData]:
         results: List[ReviewData] = []
 
         async with async_playwright() as p:
@@ -55,26 +55,33 @@ class NaverScraper(BaseScraper):
             url = self.BASE_URL.format(place_id=place_id)
             try:
                 await page.goto(url, wait_until="networkidle", timeout=30000)
+                await page.wait_for_timeout(3000)
 
-                # '더보기' 버튼 클릭 반복
-                for _ in range(max_pages):
-                    more_btn = page.locator('a.f_S_P')
-                    if await more_btn.is_visible():
+                # '펼쳐서 더보기' 버튼 클릭으로 max_reviews개 이상 로드
+                while True:
+                    current = len(await page.query_selector_all('li.place_apply_pui'))
+                    if current >= max_reviews:
+                        break
+                    more_btn = page.locator('span.TeItc').first
+                    if await more_btn.count() > 0 and await more_btn.is_visible():
                         await more_btn.click()
-                        await page.wait_for_timeout(1500)
+                        await page.wait_for_timeout(2000)
+                        new_count = len(await page.query_selector_all('li.place_apply_pui'))
+                        if new_count <= current:
+                            break
                     else:
                         break
 
-                review_elements = await page.query_selector_all('li.p_S_f')
+                review_elements = await page.query_selector_all('li.place_apply_pui')
 
                 for idx, element in enumerate(review_elements):
-                    text_el = await element.query_selector('.z_p_x')
+                    text_el = await element.query_selector('div.pui__vn15t2')
                     review_text = await text_el.inner_text() if text_el else ""
 
-                    name_el = await element.query_selector('.P_Y_u')
+                    name_el = await element.query_selector('span.pui__NMi-Dp')
                     visitor_name = await name_el.inner_text() if name_el else "익명"
 
-                    date_el = await element.query_selector('.X_x_x')
+                    date_el = await element.query_selector('span.pui__gfuUIT span.pui__blind:last-child')
                     visited_date = await date_el.inner_text() if date_el else ""
 
                     if review_text.strip():
@@ -242,12 +249,12 @@ class ScraperService:
         platform: str,
         place_id: str,
         hospital_id: str,
-        max_pages: int = 3,
+        max_reviews: int = 100,
     ) -> List[ReviewData]:
         scraper = self._scrapers.get(platform)
         if not scraper:
             raise ValueError(f"지원하지 않는 플랫폼: {platform}")
-        return await scraper.scrape(place_id, hospital_id, max_pages)
+        return await scraper.scrape(place_id, hospital_id, max_reviews)
 
     async def scrape_all(self, hospital) -> List[ReviewData]:
         """병원의 모든 플랫폼 리뷰를 수집"""

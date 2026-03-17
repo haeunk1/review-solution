@@ -5,6 +5,7 @@ from app.db.session import SessionLocal
 from app.models.hospital import Hospital
 from app.models.review import Review, Platform
 from app.services.scraper_service import scraper_service
+import traceback
 
 scheduler = AsyncIOScheduler()
 
@@ -22,12 +23,12 @@ async def collect_reviews_for_hospital(hospital_id: str):
             print(f"[Scheduler] 병원 없음: {hospital_id}")
             return
 
-        print(f"[Scheduler] 리뷰 수집 시작: {hospital.name}")
+        print(f"[Scheduler] 병원 확인: {hospital.name}, naver_place_id={hospital.naver_place_id}")
         reviews = await scraper_service.scrape_all(hospital)
+        print(f"[Scheduler] 스크래퍼 수집 결과: {len(reviews)}건")
 
         new_count = 0
-        for r in reviews:
-            # 중복 체크: platform + platform_review_id
+        for i, r in enumerate(reviews):
             if r.platform_review_id:
                 exists = db.query(Review).filter(
                     Review.platform == r.platform,
@@ -48,12 +49,18 @@ async def collect_reviews_for_hospital(hospital_id: str):
             db.add(db_review)
             new_count += 1
 
+            # 50건마다 중간 커밋 (중단 시 손실 최소화)
+            if new_count % 50 == 0:
+                db.commit()
+                print(f"[Scheduler] 중간 저장: {new_count}건")
+
         db.commit()
         print(f"[Scheduler] {hospital.name}: 신규 리뷰 {new_count}건 저장 완료")
 
     except Exception as e:
         db.rollback()
         print(f"[Scheduler] 에러 발생 ({hospital_id}): {e}")
+        print(traceback.format_exc())
     finally:
         db.close()
 
