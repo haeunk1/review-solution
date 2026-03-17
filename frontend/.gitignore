@@ -1,0 +1,30 @@
+### Node / Vite / Vue
+node_modules/
+dist/
+dist-ssr/
+*.local
+
+### Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+### Editor / OS
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+.vs/
+
+### Environment
+.env
+.env.*.local
+
+### Tooling / misc
+*.log
+*.swp
+*.swo
+*.tmp
+*.bak
