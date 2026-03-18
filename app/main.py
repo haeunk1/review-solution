@@ -1,7 +1,7 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.api.v1 import reviews, hospitals
+from app.api.v1 import reviews, hospitals, analysis, replies
 from app.services.scheduler_service import init_scheduler, stop_scheduler
 
 
@@ -28,6 +28,8 @@ app.add_middleware(
 # app.include_router(auth.router, prefix="/api/v1/auth", tags=["auth"])
 app.include_router(reviews.router, prefix="/api/v1/reviews", tags=["reviews"])
 app.include_router(hospitals.router, prefix="/api/v1/hospitals", tags=["hospitals"])
+app.include_router(analysis.router, prefix="/api/v1/analysis", tags=["analysis"])
+app.include_router(replies.router, prefix="/api/v1/replies", tags=["replies"])
 
 
 @app.get("/")

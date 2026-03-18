@@ -1,60 +1,60 @@
 <script setup lang="ts">
-import { computed, watch, ref } from 'vue'
+import { ref, watch } from 'vue'
 import type { Review, ReplyOption } from '@/types/review'
 import AppButton from '@/components/ui/AppButton.vue'
 import AppAvatar from '@/components/ui/AppAvatar.vue'
 import AppTextarea from '@/components/ui/AppTextarea.vue'
 import { Star } from 'lucide-vue-next'
 import { useToast } from '@/composables/useToast'
+import { reviewsApi } from '@/api/reviews'
 
 const props = defineProps<{ review: Review }>()
 const emit = defineEmits<{ submit: [reviewId: string, content: string]; close: [] }>()
 const toast = useToast()
 
-const replyOptions = computed<ReplyOption[]>(() => [
-  {
-    id: 'thank',
-    type: 'thank',
-    label: '감사형',
-    content: `${props.review.author}님, 소중한 리뷰 감사합니다. 저희 병원을 방문해 주시고 좋은 경험을 해주셔서 기쁩니다. 앞으로도 최선의 진료와 서비스로 보답하겠습니다. 다음 방문 시에도 편안한 진료 받으실 수 있도록 하겠습니다.`,
-  },
-  {
-    id: 'inform',
-    type: 'inform',
-    label: '정보제공형',
-    content: `${props.review.author}님, 리뷰 감사합니다. 말씀해 주신 시술은 개인의 피부 상태에 따라 결과가 다를 수 있으며, 보통 2-3회 시술 후 최적의 효과를 기대하실 수 있습니다. 추가적인 문의 사항이 있으시면 언제든 연락 주세요.`,
-  },
-  {
-    id: 'inquiry',
-    type: 'inquiry',
-    label: '문의유도형',
-    content: `${props.review.author}님, 소중한 의견 감사합니다. 더 나은 서비스를 위해 노력하겠습니다. 추가적인 문의나 상담이 필요하시면 02-1234-5678로 연락 주시거나, 카카오톡 채널을 통해 편하게 문의해 주세요.`,
-  },
-])
+const styleOptions: ReplyOption[] = [
+  { id: 'friendly', type: 'friendly', label: '친근한' },
+  { id: 'formal', type: 'formal', label: '정중한' },
+  { id: 'positive', type: 'positive', label: '긍정적' },
+]
 
-const selectedOption = ref<ReplyOption>(replyOptions.value[0])
-const editedContent = ref(replyOptions.value[0].content)
+function defaultStyle(sentiment?: string): ReplyOption {
+  if (sentiment === 'negative') return styleOptions[1]  // formal
+  if (sentiment === 'positive') return styleOptions[2]  // positive
+  return styleOptions[0]  // friendly
+}
+
+const selectedStyle = ref<ReplyOption>(defaultStyle(props.review.sentiment))
+const editedContent = ref('')
 const isGenerating = ref(false)
 
 watch(
-  () => selectedOption.value,
-  (option) => {
-    editedContent.value = option.content
-  }
+  () => props.review,
+  () => {
+    selectedStyle.value = defaultStyle(props.review.sentiment)
+    editedContent.value = ''
+  },
+  { immediate: false },
 )
 
-const selectOption = (option: ReplyOption) => {
-  selectedOption.value = option
-}
-
-const regenerate = async () => {
+async function generate() {
   isGenerating.value = true
-  await new Promise((resolve) => setTimeout(resolve, 1000))
-  editedContent.value = `${props.review.author}님, 진심으로 감사드립니다. 저희 청담피부과의원을 찾아주셔서 감사합니다. 고객님의 만족이 저희의 가장 큰 보람입니다. 앞으로도 더 좋은 진료와 서비스로 보답하겠습니다. 건강한 피부를 위해 항상 함께하겠습니다.`
-  isGenerating.value = false
+  try {
+    const { data } = await reviewsApi.generateReply(props.review.id, selectedStyle.value.type)
+    editedContent.value = data.reply_text
+  } catch {
+    toast.add({ title: 'AI 답글 생성에 실패했습니다.', color: 'error' })
+  } finally {
+    isGenerating.value = false
+  }
 }
 
-const handleSubmit = () => {
+// 패널이 열릴 때 자동으로 AI 답글 생성
+if (!props.review.replied) {
+  generate()
+}
+
+const handleSubmit = async () => {
   emit('submit', props.review.id, editedContent.value)
   toast.add({ title: '답글이 등록되었습니다', color: 'success' })
   emit('close')
@@ -68,11 +68,13 @@ const handleSubmit = () => {
       <AppButton icon="i-lucide-x" color="neutral" variant="ghost" size="sm" @click="emit('close')" />
     </div>
     <div class="flex-1 overflow-auto p-4">
+      <!-- 원본 리뷰 -->
       <div class="mb-6 rounded-lg bg-gray-100 p-4">
         <div class="mb-2 flex items-center gap-3">
           <AppAvatar :src="review.avatarUrl" :alt="review.author" size="sm" />
           <div>
             <span class="font-medium text-gray-900">{{ review.author }}</span>
+            <div v-if="review.platform" class="text-xs text-gray-400">{{ review.platform }}</div>
             <div class="flex items-center gap-1">
               <Star
                 v-for="i in 5"
@@ -84,21 +86,38 @@ const handleSubmit = () => {
           </div>
         </div>
         <p class="text-sm text-gray-700">{{ review.content }}</p>
+        <!-- 감성 태그 -->
+        <div v-if="review.sentiment" class="mt-2">
+          <span
+            class="inline-block rounded-full px-2 py-0.5 text-xs font-medium"
+            :class="{
+              'bg-green-100 text-green-700': review.sentiment === 'positive',
+              'bg-red-100 text-red-600': review.sentiment === 'negative',
+              'bg-gray-100 text-gray-500': review.sentiment === 'neutral',
+            }"
+          >
+            {{ review.sentiment === 'positive' ? '긍정' : review.sentiment === 'negative' ? '부정' : '중립' }}
+          </span>
+        </div>
       </div>
+
+      <!-- 답글 스타일 선택 -->
       <div class="mb-4">
-        <label class="mb-2 block text-sm font-medium text-gray-900">답글 유형 선택</label>
-        <div class="flex flex-wrap gap-2">
+        <label class="mb-2 block text-sm font-medium text-gray-900">답글 스타일</label>
+        <div class="flex gap-2">
           <AppButton
-            v-for="option in replyOptions"
-            :key="option.id"
-            :label="option.label"
-            :color="selectedOption.id === option.id ? 'primary' : 'neutral'"
-            :variant="selectedOption.id === option.id ? 'solid' : 'outline'"
+            v-for="opt in styleOptions"
+            :key="opt.id"
+            :label="opt.label"
+            :color="selectedStyle.id === opt.id ? 'primary' : 'neutral'"
+            :variant="selectedStyle.id === opt.id ? 'solid' : 'outline'"
             size="sm"
-            @click="selectOption(option)"
+            @click="selectedStyle = opt; generate()"
           />
         </div>
       </div>
+
+      <!-- AI 생성 답글 -->
       <div class="mb-4">
         <div class="mb-2 flex items-center justify-between">
           <label class="text-sm font-medium text-gray-900">AI 생성 답글</label>
@@ -109,16 +128,25 @@ const handleSubmit = () => {
             variant="ghost"
             size="xs"
             :loading="isGenerating"
-            @click="regenerate"
+            @click="generate"
           />
         </div>
-        <AppTextarea v-model="editedContent" :rows="6" class="w-full" />
+        <div v-if="isGenerating" class="flex h-32 items-center justify-center rounded-lg border border-gray-200 bg-gray-50 text-sm text-gray-400">
+          AI가 답글을 생성 중입니다...
+        </div>
+        <AppTextarea v-else v-model="editedContent" :rows="6" class="w-full" />
       </div>
       <div class="mb-4 text-right text-xs text-gray-500">{{ editedContent.length }} / 500자</div>
     </div>
     <div class="flex gap-2 border-t border-gray-200 p-4">
       <AppButton label="취소" color="neutral" variant="outline" class="flex-1" @click="emit('close')" />
-      <AppButton label="답글 등록" icon="i-lucide-send" class="flex-1" @click="handleSubmit" />
+      <AppButton
+        label="답글 등록"
+        icon="i-lucide-send"
+        class="flex-1"
+        :disabled="!editedContent.trim() || isGenerating"
+        @click="handleSubmit"
+      />
     </div>
   </div>
 </template>
