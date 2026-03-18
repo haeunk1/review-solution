@@ -1,3 +1,8 @@
+export type Platform = 'naver' | 'google' | 'gangnamunni'
+export type Sentiment = 'positive' | 'negative' | 'neutral'
+export type ReplyStatus = 'pending' | 'approved' | 'posted'
+export type ReplyStyle = 'formal' | 'friendly' | 'positive'
+
 export interface Review {
   id: string
   author: string
@@ -7,13 +12,15 @@ export interface Review {
   replied: boolean
   replyContent?: string
   avatarUrl?: string
+  platform?: Platform
+  sentiment?: Sentiment
+  keywords?: string[]
 }
 
 export interface ReplyOption {
   id: string
-  type: 'thank' | 'inform' | 'inquiry'
+  type: 'formal' | 'friendly' | 'positive'
   label: string
-  content: string
 }
 
 export interface StatsData {

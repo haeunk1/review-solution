@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useReviews } from '@/composables/useReviews'
 import PanelLayout from '@/components/PanelLayout.vue'
 import ReviewCard from '@/components/ReviewCard.vue'
@@ -9,7 +9,8 @@ import AppInput from '@/components/ui/AppInput.vue'
 import AppSelect from '@/components/ui/AppSelect.vue'
 import AppEmpty from '@/components/ui/AppEmpty.vue'
 
-const { reviews, selectedReview, selectReview, submitReply } = useReviews()
+const { reviews, selectedReview, selectReview, submitReply, fetchReviews } = useReviews()
+onMounted(fetchReviews)
 const searchQuery = ref('')
 const filterStatus = ref('all')
 const filterRating = ref('all')
