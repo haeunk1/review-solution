@@ -13,6 +13,9 @@ class Settings(BaseSettings):
     
     # OpenAI 설정
     OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY")
+
+    # Google Gemini 설정
+    GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
     
     # JWT 설정
     SECRET_KEY: str = os.getenv("SECRET_KEY")

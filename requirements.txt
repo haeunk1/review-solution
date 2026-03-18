@@ -4,6 +4,7 @@ sqlalchemy
 psycopg2-binary
 playwright
 openai
+google-generativeai
 python-dotenv
 alembic
 apscheduler
