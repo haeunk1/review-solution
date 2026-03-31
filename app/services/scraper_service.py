@@ -1,8 +1,13 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import List, Optional
 import hashlib
+import logging
+import httpx
 from playwright.async_api import async_playwright
+
+logger = logging.getLogger(__name__)
 
 
 def _stable_id(platform: str, *parts: str) -> str:
@@ -113,72 +118,76 @@ class NaverScraper(BaseScraper):
         return results
 
 
-class GoogleScraper(BaseScraper):
-    """구글 맵 리뷰 스크래퍼"""
+class GooglePlacesClient(BaseScraper):
+    """Google Places API를 이용한 구글 리뷰 수집 클라이언트
+
+    참고: Places API는 장소당 최대 5개의 리뷰만 반환합니다 (구글 정책).
+    사용 전 Google Cloud Console에서 Places API를 활성화하고
+    .env의 GOOGLE_MAPS_API_KEY를 설정해야 합니다.
+    """
 
     PLATFORM = "google"
-    BASE_URL = "https://www.google.com/maps/place/?q=place_id:{place_id}"
+    PLACES_DETAIL_URL = "https://maps.googleapis.com/maps/api/place/details/json"
 
-    async def scrape(self, place_id: str, hospital_id: str, max_pages: int = 3) -> List[ReviewData]:
+    async def scrape(self, place_id: str, hospital_id: str, **kwargs) -> List[ReviewData]:
+        from app.core.config import settings
+
+        if not settings.GOOGLE_MAPS_API_KEY:
+            logger.warning(
+                "[GooglePlaces] GOOGLE_MAPS_API_KEY가 설정되지 않았습니다. "
+                ".env 파일에 GOOGLE_MAPS_API_KEY를 추가하세요."
+            )
+            return []
+
+        params = {
+            "place_id": place_id,
+            "fields": "reviews",
+            "language": "ko",
+            "key": settings.GOOGLE_MAPS_API_KEY,
+        }
+
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                response = await client.get(self.PLACES_DETAIL_URL, params=params)
+                response.raise_for_status()
+                data = response.json()
+        except Exception as e:
+            logger.error(f"[GooglePlaces] API 요청 실패: {e}")
+            return []
+
+        status = data.get("status")
+        if status != "OK":
+            logger.error(f"[GooglePlaces] API 오류 상태: {status} — {data.get('error_message', '')}")
+            return []
+
+        raw_reviews = data.get("result", {}).get("reviews", [])
         results: List[ReviewData] = []
 
-        async with async_playwright() as p:
-            browser = await self._launch_browser(p)
-            context = await self._new_context(browser)
-            page = await context.new_page()
+        for review in raw_reviews:
+            review_text: str = review.get("text", "").replace("\n", " ").strip()
+            if not review_text:
+                continue
 
-            url = self.BASE_URL.format(place_id=place_id)
-            try:
-                await page.goto(url, wait_until="networkidle", timeout=30000)
+            visitor_name: str = review.get("author_name", "익명")
+            rating: Optional[str] = str(review.get("rating")) if review.get("rating") is not None else None
 
-                # 리뷰 탭 클릭
-                review_tab = page.locator('button[aria-label*="리뷰"], button[aria-label*="Reviews"]')
-                if await review_tab.count() > 0:
-                    await review_tab.first.click()
-                    await page.wait_for_timeout(2000)
+            # unix timestamp → YYYY-MM-DD
+            timestamp: Optional[int] = review.get("time")
+            visited_date: str = (
+                datetime.utcfromtimestamp(timestamp).strftime("%Y-%m-%d") if timestamp else ""
+            )
 
-                # 스크롤로 리뷰 더 로드
-                review_panel = page.locator('div[role="feed"]')
-                for _ in range(max_pages):
-                    if await review_panel.count() > 0:
-                        await review_panel.evaluate("el => el.scrollTop = el.scrollHeight")
-                        await page.wait_for_timeout(1500)
+            platform_review_id = _stable_id(self.PLATFORM, visitor_name, visited_date, review_text[:40])
 
-                review_elements = await page.query_selector_all('div[data-review-id]')
-
-                for element in review_elements:
-                    review_id = await element.get_attribute('data-review-id')
-
-                    text_el = await element.query_selector('span[data-expandable-section]')
-                    if not text_el:
-                        text_el = await element.query_selector('.MyEned')
-                    review_text = await text_el.inner_text() if text_el else ""
-
-                    name_el = await element.query_selector('.d4r55')
-                    visitor_name = await name_el.inner_text() if name_el else "익명"
-
-                    rating_el = await element.query_selector('span[role="img"][aria-label]')
-                    rating_text = await rating_el.get_attribute('aria-label') if rating_el else ""
-                    rating = rating_text.split("점")[0].replace("별표", "").strip() if rating_text else None
-
-                    date_el = await element.query_selector('.rsqaWe')
-                    visited_date = await date_el.inner_text() if date_el else ""
-
-                    if review_text.strip():
-                        results.append(ReviewData(
-                            hospital_id=hospital_id,
-                            platform=self.PLATFORM,
-                            platform_review_id=f"google_{review_id}" if review_id else None,
-                            review_text=review_text.replace("\n", " ").strip(),
-                            rating=rating,
-                            visitor_name=visitor_name.strip(),
-                            visited_date=visited_date.strip(),
-                        ))
-
-            except Exception as e:
-                print(f"[GoogleScraper] 크롤링 에러: {e}")
-            finally:
-                await browser.close()
+            results.append(ReviewData(
+                hospital_id=hospital_id,
+                platform=self.PLATFORM,
+                platform_review_id=platform_review_id,
+                review_text=review_text,
+                rating=rating,
+                visitor_name=visitor_name,
+                visited_date=visited_date,
+            ))
 
         return results
 
@@ -253,7 +262,7 @@ class ScraperService:
 
     _scrapers = {
         "naver": NaverScraper(),
-        "google": GoogleScraper(),
+        "google": GooglePlacesClient(),
         "gangnamunni": GangnamUnniScraper(),
     }
 

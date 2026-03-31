@@ -3,6 +3,7 @@ uvicorn[standard]
 sqlalchemy
 psycopg2-binary
 playwright
+httpx
 openai
 google-generativeai
 python-dotenv

@@ -16,6 +16,9 @@ class Settings(BaseSettings):
 
     # Google Gemini 설정
     GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
+
+    # Google Maps Places API 설정
+    GOOGLE_MAPS_API_KEY: str = os.getenv("GOOGLE_MAPS_API_KEY", "")
     
     # JWT 설정
     SECRET_KEY: str = os.getenv("SECRET_KEY")
