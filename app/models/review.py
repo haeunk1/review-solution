@@ -6,7 +6,6 @@ import enum
 class Platform(str, enum.Enum):
     naver = "naver"
     google = "google"
-    gangnamunni = "gangnamunni"
 
 class Sentiment(str, enum.Enum):
     positive = "positive"
@@ -27,7 +26,7 @@ class Review(Base):
     __tablename__ = "reviews"
 
     id = Column(Integer, primary_key=True, index=True)
-    hospital_id = Column(String, ForeignKey("hospitals.hospital_id"), nullable=False, index=True)
+    store_id = Column(String, ForeignKey("stores.store_id"), nullable=False, index=True)
 
     # 플랫폼 정보
     platform = Column(Enum(Platform), nullable=False, default=Platform.naver)

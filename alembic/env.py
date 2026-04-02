@@ -11,7 +11,7 @@ from app.core.config import settings
 from app.db.session import Base
 
 # 모든 모델을 import해야 alembic이 감지함
-from app.models import hospital, review  # noqa
+from app.models import store, review  # noqa
 
 config = context.config
 config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)

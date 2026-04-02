@@ -192,103 +192,36 @@ class GooglePlacesClient(BaseScraper):
         return results
 
 
-class GangnamUnniScraper(BaseScraper):
-    """강남언니 리뷰 스크래퍼"""
-
-    PLATFORM = "gangnamunni"
-    BASE_URL = "https://gangnamunni.com/hospitals/{place_id}/reviews"
-
-    async def scrape(self, place_id: str, hospital_id: str, max_pages: int = 3) -> List[ReviewData]:
-        results: List[ReviewData] = []
-
-        async with async_playwright() as p:
-            browser = await self._launch_browser(p)
-            context = await self._new_context(browser)
-            page = await context.new_page()
-
-            url = self.BASE_URL.format(place_id=place_id)
-            try:
-                await page.goto(url, wait_until="networkidle", timeout=30000)
-                await page.wait_for_timeout(2000)
-
-                # 더보기 버튼 반복 클릭
-                for _ in range(max_pages):
-                    more_btn = page.locator('button:has-text("더보기")')
-                    if await more_btn.count() > 0 and await more_btn.first.is_visible():
-                        await more_btn.first.click()
-                        await page.wait_for_timeout(1500)
-                    else:
-                        break
-
-                review_elements = await page.query_selector_all('li[class*="review"]')
-
-                for idx, element in enumerate(review_elements):
-                    text_el = await element.query_selector('p[class*="content"], div[class*="content"]')
-                    review_text = await text_el.inner_text() if text_el else ""
-
-                    name_el = await element.query_selector('span[class*="nickname"], span[class*="name"]')
-                    visitor_name = await name_el.inner_text() if name_el else "익명"
-
-                    rating_el = await element.query_selector('span[class*="rating"], div[class*="star"]')
-                    rating = await rating_el.inner_text() if rating_el else None
-
-                    date_el = await element.query_selector('span[class*="date"], time')
-                    visited_date = await date_el.inner_text() if date_el else ""
-
-                    text = review_text.replace("\n", " ").strip()
-                    name = visitor_name.strip()
-                    date = visited_date.strip()
-                    if text:
-                        results.append(ReviewData(
-                            hospital_id=hospital_id,
-                            platform=self.PLATFORM,
-                            platform_review_id=_stable_id(self.PLATFORM, name, date, text[:40]),
-                            review_text=text,
-                            rating=rating,
-                            visitor_name=name,
-                            visited_date=date,
-                        ))
-
-            except Exception as e:
-                print(f"[GangnamUnniScraper] 크롤링 에러: {e}")
-            finally:
-                await browser.close()
-
-        return results
-
-
 class ScraperService:
     """플랫폼별 스크래퍼를 통합 관리하는 서비스"""
 
     _scrapers = {
         "naver": NaverScraper(),
         "google": GooglePlacesClient(),
-        "gangnamunni": GangnamUnniScraper(),
     }
 
     async def scrape_platform(
         self,
         platform: str,
         place_id: str,
-        hospital_id: str,
+        store_id: str,
         max_reviews: int = 100,
     ) -> List[ReviewData]:
         scraper = self._scrapers.get(platform)
         if not scraper:
             raise ValueError(f"지원하지 않는 플랫폼: {platform}")
-        return await scraper.scrape(place_id, hospital_id, max_reviews)
+        return await scraper.scrape(place_id, store_id, max_reviews)
 
-    async def scrape_all(self, hospital) -> List[ReviewData]:
-        """병원의 모든 플랫폼 리뷰를 수집"""
+    async def scrape_all(self, store) -> List[ReviewData]:
+        """업장의 모든 플랫폼 리뷰를 수집"""
         results: List[ReviewData] = []
         platform_map = {
-            "naver": hospital.naver_place_id,
-            "google": hospital.google_place_id,
-            "gangnamunni": hospital.gangnamunni_id,
+            "naver": store.naver_place_id,
+            "google": store.google_place_id,
         }
         for platform, place_id in platform_map.items():
             if place_id:
-                reviews = await self.scrape_platform(platform, place_id, hospital.hospital_id)
+                reviews = await self.scrape_platform(platform, place_id, store.store_id)
                 results.extend(reviews)
         return results
 

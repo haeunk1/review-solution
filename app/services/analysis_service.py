@@ -14,11 +14,11 @@ def _get_model() -> genai.GenerativeModel:
     return genai.GenerativeModel(GEMINI_MODEL)
 
 
-async def analyze_reviews_batch(hospital_id: str, db: Session) -> int:
+async def analyze_reviews_batch(store_id: str, db: Session) -> int:
     """미분석 리뷰를 Gemini API로 배치 분석하여 DB에 저장. 분석된 건수 반환."""
     unanalyzed = (
         db.query(Review)
-        .filter(Review.hospital_id == hospital_id, Review.sentiment.is_(None))
+        .filter(Review.store_id == store_id, Review.sentiment.is_(None))
         .all()
     )
     if not unanalyzed:
@@ -33,7 +33,7 @@ async def analyze_reviews_batch(hospital_id: str, db: Session) -> int:
         numbered = "\n".join(
             f"{j+1}. {r.review_text[:300]}" for j, r in enumerate(batch)
         )
-        prompt = f"""다음은 의료기관(피부과/성형외과) 리뷰들입니다. 각 리뷰를 분석해서 JSON 배열로 반환해줘.
+        prompt = f"""다음은 업장(음식점, 카페, 병원 등) 리뷰들입니다. 각 리뷰를 분석해서 JSON 배열로 반환해줘.
 
 리뷰:
 {numbered}
@@ -69,9 +69,9 @@ async def analyze_reviews_batch(hospital_id: str, db: Session) -> int:
     return updated
 
 
-def get_analysis_summary(hospital_id: str, db: Session) -> dict:
+def get_analysis_summary(store_id: str, db: Session) -> dict:
     """병원의 분석 통계 요약 반환."""
-    reviews = db.query(Review).filter(Review.hospital_id == hospital_id).all()
+    reviews = db.query(Review).filter(Review.store_id == store_id).all()
     if not reviews:
         return _empty_summary()
 
