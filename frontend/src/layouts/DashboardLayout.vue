@@ -1,58 +1,136 @@
 <template>
-  <div class="flex min-h-screen bg-gray-50">
+  <div class="flex min-h-screen bg-slate-50">
     <!-- Sidebar -->
-    <aside class="flex w-56 shrink-0 flex-col border-r border-gray-200 bg-white">
-      <div class="flex items-center gap-2 px-4 py-4">
-        <div class="flex size-10 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-          <HeartPulse class="size-5" />
+    <aside class="sidebar-gradient flex w-60 shrink-0 flex-col">
+      <!-- 로고 -->
+      <div class="flex items-center gap-3 px-5 py-5">
+        <div class="flex size-9 items-center justify-center rounded-xl bg-white/15">
+          <Star class="size-5 text-white" />
         </div>
-        <span class="text-lg font-bold text-gray-900">CareReply AI</span>
+        <div>
+          <span class="text-base font-bold tracking-tight text-white">ReviewHub</span>
+          <p class="text-[10px] leading-none text-indigo-300">AI 리뷰 통합 관리</p>
+        </div>
       </div>
-      <nav class="flex-1 space-y-0.5 px-2 py-2">
+
+      <!-- 구분선 -->
+      <div class="mx-4 border-t border-white/10" />
+
+      <!-- 네비게이션 -->
+      <nav class="flex-1 space-y-0.5 px-3 py-3">
+        <p class="mb-1 px-3 text-[10px] font-semibold uppercase tracking-wider text-indigo-400">메인</p>
         <router-link
-          v-for="item in navItems"
+          v-for="item in mainNavItems"
           :key="item.to"
           :to="item.to"
-          class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors"
-          :class="$route.path === item.to ? 'bg-gray-100 text-gray-900' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'"
+          class="group flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all"
+          :class="isActive(item.to) ? 'bg-white/15 text-white' : 'text-indigo-200 hover:bg-white/10 hover:text-white'"
         >
-          <component :is="item.icon" class="size-5 shrink-0" />
+          <component :is="item.icon" class="size-4 shrink-0" />
+          {{ item.label }}
+          <!-- 부정 리뷰 알림 뱃지 -->
+          <span
+            v-if="item.badge && item.badge > 0"
+            class="ml-auto flex size-5 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white alert-pulse"
+          >
+            {{ item.badge > 9 ? '9+' : item.badge }}
+          </span>
+        </router-link>
+
+        <p class="mb-1 mt-4 px-3 text-[10px] font-semibold uppercase tracking-wider text-indigo-400">분석 & 성장</p>
+        <router-link
+          v-for="item in analyticsNavItems"
+          :key="item.to"
+          :to="item.to"
+          class="group flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all"
+          :class="isActive(item.to) ? 'bg-white/15 text-white' : 'text-indigo-200 hover:bg-white/10 hover:text-white'"
+        >
+          <component :is="item.icon" class="size-4 shrink-0" />
+          {{ item.label }}
+        </router-link>
+
+        <p class="mb-1 mt-4 px-3 text-[10px] font-semibold uppercase tracking-wider text-indigo-400">시스템</p>
+        <router-link
+          v-for="item in systemNavItems"
+          :key="item.to"
+          :to="item.to"
+          class="group flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all"
+          :class="isActive(item.to) ? 'bg-white/15 text-white' : 'text-indigo-200 hover:bg-white/10 hover:text-white'"
+        >
+          <component :is="item.icon" class="size-4 shrink-0" />
           {{ item.label }}
         </router-link>
       </nav>
-      <div class="border-t border-gray-200 p-2">
+
+      <!-- 하단 업장 정보 -->
+      <div class="border-t border-white/10 p-3">
         <button
-          class="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors hover:bg-gray-50"
+          class="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition-all hover:bg-white/10"
           @click="logout"
         >
-          <AppAvatar :src="`https://api.dicebear.com/7.x/initials/svg?seed=${hospitalName}`" :alt="hospitalName" size="sm" />
-          <div class="min-w-0 flex-1">
-            <p class="truncate text-sm font-medium text-gray-900">{{ hospitalName }}</p>
-            <p class="truncate text-xs text-gray-400">{{ hospitalId }}</p>
+          <div class="flex size-8 shrink-0 items-center justify-center rounded-full bg-indigo-400/30 text-xs font-bold text-white">
+            {{ storeName.charAt(0) }}
           </div>
-          <LogOut class="size-4 shrink-0 text-gray-400" />
+          <div class="min-w-0 flex-1">
+            <p class="truncate text-xs font-semibold text-white">{{ storeName }}</p>
+            <p class="truncate text-[10px] text-indigo-300">로그아웃</p>
+          </div>
+          <LogOut class="size-3.5 shrink-0 text-indigo-300" />
         </button>
       </div>
     </aside>
 
     <!-- Main -->
-    <main class="min-w-0 flex-1">
+    <main class="min-w-0 flex-1 overflow-auto">
       <router-view />
     </main>
   </div>
 </template>
 
 <script setup lang="ts">
-import { LayoutDashboard, MessageSquareText, BarChart3, Settings, HeartPulse, LogOut } from 'lucide-vue-next'
-import AppAvatar from '@/components/ui/AppAvatar.vue'
+import { ref, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
+import {
+  LayoutDashboard, MessageSquareText, BarChart3, Settings,
+  Star, LogOut, AlertTriangle, QrCode, Users, FileText
+} from 'lucide-vue-next'
 import { useHospital } from '@/composables/useHospital'
+import { alertsApi } from '@/api/alerts'
 
 const { hospitalId, hospitalName, logout } = useHospital()
+const storeName = hospitalName
+const route = useRoute()
 
-const navItems = [
+const urgentAlertCount = ref(0)
+
+function isActive(path: string) {
+  if (path === '/') return route.path === '/'
+  return route.path.startsWith(path)
+}
+
+const mainNavItems = [
   { label: '대시보드', to: '/', icon: LayoutDashboard },
   { label: '리뷰 목록', to: '/reviews', icon: MessageSquareText },
-  { label: '통계', to: '/statistics', icon: BarChart3 },
+  { label: '부정 리뷰 관리', to: '/alerts', icon: AlertTriangle, get badge() { return urgentAlertCount.value } },
+]
+
+const analyticsNavItems = [
+  { label: '통계 · 분석', to: '/statistics', icon: BarChart3 },
+  { label: '경쟁사 모니터링', to: '/competitors', icon: Users },
+  { label: '월간 리포트', to: '/reports', icon: FileText },
+  { label: '리뷰 요청', to: '/requests', icon: QrCode },
+]
+
+const systemNavItems = [
   { label: '설정', to: '/settings', icon: Settings },
 ]
+
+onMounted(async () => {
+  try {
+    const { data } = await alertsApi.getStats(hospitalId.value)
+    urgentAlertCount.value = data.critical + data.unread
+  } catch {
+    // 알림 통계 실패해도 무시
+  }
+})
 </script>

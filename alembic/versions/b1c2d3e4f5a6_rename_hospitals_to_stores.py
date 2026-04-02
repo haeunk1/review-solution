@@ -23,8 +23,8 @@ depends_on = None
 
 
 def upgrade() -> None:
-    # 1. FK 제약조건 제거 (reviews → hospitals)
-    op.drop_constraint("reviews_hospital_id_fkey", "reviews", type_="foreignkey")
+    # 1. FK 제약조건 제거 (reviews → hospitals) — 실제 DB 제약명 fk_hospital
+    op.drop_constraint("fk_hospital", "reviews", type_="foreignkey")
 
     # 2. reviews.hospital_id → store_id
     op.alter_column("reviews", "hospital_id", new_column_name="store_id")

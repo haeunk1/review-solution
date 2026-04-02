@@ -15,7 +15,11 @@ const router = createRouter({
       children: [
         { path: '', name: 'index', component: () => import('@/views/IndexView.vue') },
         { path: 'reviews', name: 'reviews', component: () => import('@/views/ReviewsView.vue') },
+        { path: 'alerts', name: 'alerts', component: () => import('@/views/AlertsView.vue') },
         { path: 'statistics', name: 'statistics', component: () => import('@/views/StatisticsView.vue') },
+        { path: 'competitors', name: 'competitors', component: () => import('@/views/CompetitorsView.vue') },
+        { path: 'reports', name: 'reports', component: () => import('@/views/ReportsView.vue') },
+        { path: 'requests', name: 'requests', component: () => import('@/views/ReviewRequestView.vue') },
         { path: 'settings', name: 'settings', component: () => import('@/views/SettingsView.vue') },
       ],
     },

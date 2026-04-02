@@ -1,7 +1,7 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.api.v1 import reviews, stores, analysis, replies
+from app.api.v1 import reviews, stores, analysis, replies, alerts, competitors, reports, requests
 from app.services.scheduler_service import init_scheduler, stop_scheduler
 
 
@@ -14,7 +14,7 @@ async def lifespan(app: FastAPI):
     stop_scheduler()
 
 
-app = FastAPI(title="Review AI Solution", lifespan=lifespan)
+app = FastAPI(title="ReviewHub API", version="1.0.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -30,8 +30,12 @@ app.include_router(reviews.router, prefix="/api/v1/reviews", tags=["reviews"])
 app.include_router(stores.router, prefix="/api/v1/stores", tags=["stores"])
 app.include_router(analysis.router, prefix="/api/v1/analysis", tags=["analysis"])
 app.include_router(replies.router, prefix="/api/v1/replies", tags=["replies"])
+app.include_router(alerts.router, prefix="/api/v1/alerts", tags=["alerts"])
+app.include_router(competitors.router, prefix="/api/v1/competitors", tags=["competitors"])
+app.include_router(reports.router, prefix="/api/v1/reports", tags=["reports"])
+app.include_router(requests.router, prefix="/api/v1/review-requests", tags=["review-requests"])
 
 
 @app.get("/")
 def root():
-    return {"message": "Welcome to Review AI Solution API"}
+    return {"message": "Welcome to ReviewHub API v1.0"}
